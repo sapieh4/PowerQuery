@@ -1,0 +1,30 @@
+let
+    Source = Value.NativeQuery(PostgreSQL.Database("192.168.203.205", "prod"), "
+    
+        select distinct(of.first_driver_phone)    
+        from order_funnel_for_invoice as offi
+        left join order_funnel as of on offi.order_id = of.id
+        where  of.create_date > '2022-12-01' and of.first_driver_phone IS NOT NULL
+
+    ", null, [EnableFolding=true]),
+
+    #"Trimmed Text" = Table.TransformColumns(Source,{{"first_driver_phone", Text.Trim, type text}}),
+    #"Cleaned Text" = Table.TransformColumns(#"Trimmed Text",{{"first_driver_phone", Text.Clean, type text}}),
+    #"Duplicated Column" = Table.DuplicateColumn(#"Cleaned Text", "first_driver_phone", "first_driver_phone - Copy"),
+    #"Replaced Value" = Table.ReplaceValue(#"Duplicated Column","+","",Replacer.ReplaceText,{"first_driver_phone - Copy"}),
+    #"Renamed Columns" = Table.RenameColumns(#"Replaced Value",{{"first_driver_phone - Copy", "first_driver_phone_only_numbers"}}),
+    
+    #"Added Custom1" = Table.AddColumn(#"Renamed Columns", "Custom.1", each let  tel = [first_driver_phone_only_numbers] in 
+        Table.SelectRows(AreaCodes, each 
+        Text.StartsWith( tel , [Start] )
+        )),
+
+    #"Expanded Custom.1" = Table.ExpandTableColumn(#"Added Custom1", "Custom.1", {"Country"}, {"Country"}),
+    #"Filtered Rows" = Table.SelectRows(#"Expanded Custom.1", each true),
+    #"Trimmed Text1" = Table.TransformColumns(#"Filtered Rows",{{"first_driver_phone_only_numbers", Text.Trim, type text}, {"first_driver_phone", Text.Trim, type text}}),
+    #"Cleaned Text1" = Table.TransformColumns(#"Trimmed Text1",{{"first_driver_phone_only_numbers", Text.Clean, type text}, {"first_driver_phone", Text.Clean, type text}}),
+    #"Merged Queries" = Table.NestedJoin(#"Cleaned Text1", {"first_driver_phone_only_numbers"}, #"Esteria logs", {"Phone"}, "Asteria logs", JoinKind.LeftOuter),
+    #"Expanded Asteria logs" = Table.ExpandTableColumn(#"Merged Queries", "Asteria logs", {"Channel"}, {"Asteria logs.Channel"}),
+    #"Renamed Columns1" = Table.RenameColumns(#"Expanded Asteria logs",{{"Asteria logs.Channel", "Esteria logs.Channel"}})
+in
+    #"Renamed Columns1"
