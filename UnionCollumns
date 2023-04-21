@@ -1,0 +1,20 @@
+let
+    Source = #"Companies + Contacts",
+    #"Main_email" = Table.SelectColumns(Source,{"ids" , "email"}),
+    
+
+    #"Contacts_email1" = Table.SelectColumns(Source,{"ids" ,"contacts.email"}),
+    #"Contacts_email" = Table.RenameColumns(Contacts_email1,{{"contacts.email", "email"}}),
+
+    #"Contacts_email2.1" = Table.SelectColumns(Source,{"ids" ,"contacts.email2"}),
+    #"Contacts_email2" = Table.RenameColumns(Contacts_email2.1,{{"contacts.email2", "email"}}),
+
+
+    
+    #"Appended Query" = Table.Combine({Main_email, #"Contacts_email", #"Contacts_email2"}),
+    
+    
+    #"Removed Duplicates" = Table.Distinct(#"Appended Query"),
+    #"Filtered Rows" = Table.SelectRows(#"Removed Duplicates", each ([email] <> null and [email] <> ""))
+in
+    #"Filtered Rows"
