@@ -1,0 +1,22 @@
+let
+    Source = Folder.Files("C:\Users\vp0421\Desktop\!REPORTS\Kristina - Сверка услуг G BY\IngoPro\Ingioprofaktura"),
+    #"Merged Queries" = Table.NestedJoin(Source, {"Номер Тягача/Прицепа.2"}, ERP, {"Plate number of trailer"}, "ERP", JoinKind.LeftOuter),
+    
+    
+    #"Added Custom" = Table.AddColumn(#"Merged Queries", "Custom", each 
+    
+        let  
+            INGOdate = [Дата рейса] ,
+            INGOtruck = [#"Номер Тягача/Прицепа.1"]     
+        in 
+            Table.SelectRows([ERP], each 
+            ([Order done] <= Date.AddDays(INGOdate , 1)) and 
+            ([Order done] >= Date.AddDays(INGOdate , -1)) and 
+            ([Plate number of truck] = INGOtruck)
+
+
+)),
+    #"Removed Columns" = Table.RemoveColumns(#"Added Custom",{"ERP"}),
+    #"Expanded Custom" = Table.ExpandTableColumn(#"Removed Columns", "Custom", {"Name", "Order done", "Plate number of trailer", "Plate number of truck", "Stages", "SUM"}, {"Custom.Name", "Custom.Order done", "Custom.Plate number of trailer", "Custom.Plate number of truck", "Custom.Stages", "Custom.SUM"})
+in
+    #"Expanded Custom"
