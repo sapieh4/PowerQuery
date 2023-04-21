@@ -1,0 +1,128 @@
+let
+
+    Source = Scrapper,
+    #"Removed Other Columns" = Table.SelectColumns(Source,{ "Numeris" , "Statymas i eile"}),
+    #"Added Custom" = Table.AddColumn(#"Removed Other Columns", "Length", each Text.Length([Numeris])),
+
+    MAXLength = List.Max ( #"Added Custom"[Length] ),
+    
+    #"Duplicated Column" = Table.DuplicateColumn(#"Added Custom", "Numeris", "Position"),
+    #"Split Column by Position" = Table.SplitColumn(#"Duplicated Column", "Position", Splitter.SplitTextByRepeatedLengths(1), {"Position.1", "Position.2", "Position.3", "Position.4", "Position.5", "Position.6", "Position.7", "Position.8", "Position.9", "Position.10"}),
+    #"Changed Type" = Table.TransformColumnTypes(#"Split Column by Position",{{"Position.1", type text}, {"Position.2", type text}, {"Position.3", type text}, {"Position.4", type text}, {"Position.5", type text}, {"Position.6", type text}, {"Position.7", type text}, {"Position.8", type text}, {"Position.9", type text}, {"Position.10", type text}}),
+    #"Added Custom1" = Table.AddColumn(#"Changed Type", "StartsWith", each if List.Contains({"0".."9"}, Text.Start([Numeris], 1)) then "Numbers" else "Letters"),
+
+
+    #"Duplicated Column1" = Table.DuplicateColumn(#"Added Custom1", "Numeris", "StartIfLetters"),
+    #"Split Column by Character Transition" = Table.SplitColumn(#"Duplicated Column1", "StartIfLetters", Splitter.SplitTextByCharacterTransition((c) => not List.Contains({"0".."9"}, c), {"0".."9"}), {"StartIfLetters"}),
+    #"Duplicated Column2" = Table.DuplicateColumn(#"Split Column by Character Transition", "Numeris", "StartIfNumbers"),
+    #"Split Column by Character Transition1" = Table.SplitColumn(#"Duplicated Column2", "StartIfNumbers", Splitter.SplitTextByCharacterTransition({"0".."9"}, (c) => not  List.Contains({"0".."9"}, c)), {"StartIfNumbers"}),
+    #"Added Conditional Column" = Table.AddColumn(#"Split Column by Character Transition1", "StartValue", each if [StartsWith] = "Letters" then [StartIfLetters] else [StartIfNumbers]),
+    #"Removed Columns" = Table.RemoveColumns(#"Added Conditional Column",{"StartIfLetters", "StartIfNumbers"}),
+   
+   IsLithuanian = Table.AddColumn(#"Removed Columns", "IsLithuanian", each 
+    try 
+        if 
+            [Length] = 6 and 
+            ([StartsWith] = "Letters" and Text.Length([StartValue]) = 3) and
+
+            Value.Is ( Number.FromText ([Position.4] ) , type number ) and
+            Value.Is ( Number.FromText ([Position.5] ) , type number ) and
+            Value.Is ( Number.FromText ([Position.6] ) , type number ) 
+        then true 
+        else false 
+    otherwise false),
+
+    #"Merged Queries PL regions" = Table.NestedJoin(IsLithuanian, {"StartValue"}, #"Polish regions", {"Poczatek"}, "Polish regions", JoinKind.LeftOuter),
+    #"Expanded Polish regions" = Table.ExpandTableColumn(#"Merged Queries PL regions", "Polish regions", {"Poczatek"}, {"Polish regions.Poczatek"}),
+    IsPolish = Table.AddColumn(#"Expanded Polish regions", "IsPolish", each 
+        if 
+        ([Length] = 7 or [Length] = 8) and 
+        [Polish regions.Poczatek] <> null
+        then true 
+        else false),
+    #"Removed Columns PL" = Table.RemoveColumns(IsPolish,{"Polish regions.Poczatek"}),
+
+    IsBelorusianCompany = Table.AddColumn(#"Removed Columns PL", "IsBelorusianCompany", each 
+    try 
+        [Length] = 7 and
+        List.Contains( {1 , 2, 3 , 4, 5, 6, 7}, Number.FromText( [Position.7])) and
+        (List.Contains( {"A", "B", "E", "I" , "K", "M" , "H" , "O", "P", "C", "T", "X"},  [Position.1]) and List.Contains( {"A", "B", "E", "I" , "K", "M" , "H" , "O", "P", "C", "T", "X"}, [Position.2])) and 
+        Value.Is( Number.FromText([Position.3]) , type number ) and
+        Value.Is( Number.FromText([Position.4]) , type number ) and
+        Value.Is( Number.FromText([Position.5]) , type number ) and Value.Is( Number.FromText([Position.6]) , type number )
+
+    otherwise false),
+
+    IsBelorussianPersonal = Table.AddColumn(IsBelorusianCompany, "IsBelorussianPersonal", each  
+    try 
+        [Length] = 7 and
+        List.Contains( {1 , 2, 3 , 4, 5, 6, 7}, Number.FromText( [Position.7])) and
+        (List.Contains( {"A", "B", "E", "I" , "K", "M" , "H" , "O", "P", "C", "T", "X"},  [Position.5]) and List.Contains( {"A", "B", "E", "I" , "K", "M" , "H" , "O", "P", "C", "T", "X"}, [Position.6])) and 
+        Value.Is( Number.FromText([Position.1]) , type number ) and
+        Value.Is( Number.FromText([Position.2]) , type number ) and
+        Value.Is( Number.FromText([Position.3]) , type number ) and Value.Is( Number.FromText([Position.4]) , type number )
+    otherwise false),
+
+    IsRussian = Table.AddColumn(IsBelorussianPersonal, "IsRussian", each 
+    try
+        List.Contains( RussianRegionsList , Number.FromText(
+            if [Position.9] <> null
+            then [Position.7]&[Position.8]&[Position.9] 
+            else [Position.7]&[Position.8]
+        )) and 
+        ([Length] = 8 or [Length] = 9) and 
+        (List.Contains( {"A", "B", "E", "Y" , "K", "M" , "H" , "O", "P", "C", "T", "X"},  [Position.1]) and List.Contains( {"A", "B", "E", "Y" , "K", "M" , "H" , "O", "P", "C", "T", "X"}, [Position.5]) and List.Contains( {"A", "B", "E", "Y" , "K", "M" , "H" , "O", "P", "C", "T", "X"}, [Position.5])) and 
+        Value.Is( Number.FromText([Position.2]) , type number ) and
+        Value.Is( Number.FromText([Position.3]) , type number ) and
+        Value.Is( Number.FromText([Position.4]) , type number )
+    otherwise false),
+
+    IsUzbekistan = Table.AddColumn(IsRussian, "IsUzbekistan", each 
+    try
+        ([Length] = 8) and 
+        Value.Is( Number.FromText([Position.1]) , type number ) and
+        Value.Is( Number.FromText([Position.2]) , type number ) and
+        Value.Is( Number.FromText([Position.4]) , type number ) and
+        Value.Is( Number.FromText([Position.5]) , type number ) and
+        Value.Is( Number.FromText([Position.6]) , type number )  and
+        List.Contains( {"A", "B", "C", "D", "E", "F", "G", "H", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"}, [Position.3]) and
+        List.Contains( {"A", "B", "C", "D", "E", "F", "G", "H", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"}, [Position.7]) and
+        List.Contains( {"A", "B", "C", "D", "E", "F", "G", "H", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"}, [Position.8])
+    otherwise false),
+
+    IsKazahstanCompany = Table.AddColumn(IsUzbekistan, "IsKazahstanCompany", each 
+    try
+        [Length] = 7 and
+        List.Contains( KZRegions, [Position.6]&[Position.7]) and
+        Value.Is( Number.FromText([Position.1]) , type number ) and
+        Value.Is( Number.FromText([Position.2]) , type number ) and
+        Value.Is( Number.FromText([Position.3]) , type number ) and
+        List.Contains( {"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"}, [Position.4]) and
+        List.Contains( {"A", "B", "C", "D", "E", "F", "G", "H", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"}, [Position.5])
+    otherwise false),
+
+    IsKazahstanPersonal = Table.AddColumn(IsKazahstanCompany, "IsKazahstanPersonal", each  
+    try
+        [Length] = 8 and
+        List.Contains( KZRegions, [Position.7]&[Position.8]) and
+        Value.Is( Number.FromText([Position.1]) , type number ) and
+        Value.Is( Number.FromText([Position.2]) , type number ) and
+        Value.Is( Number.FromText([Position.3]) , type number ) and
+        List.Contains( {"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"}, [Position.4]) and
+        List.Contains( {"A", "B", "C", "D", "E", "F", "G", "H", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"}, [Position.5]) and 
+        List.Contains( {"A", "B", "C", "D", "E", "F", "G", "H", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"}, [Position.6])
+    otherwise false),
+
+    #"Added Custom2" = Table.AddColumn(IsKazahstanPersonal, "CountTrueValues", each Number.From ( [IsLithuanian] ) +
+        Number.From ( [IsPolish] ) +
+        Number.From ( [IsBelorusianCompany] ) +
+        Number.From ( [IsBelorussianPersonal] ) +
+        Number.From ( [IsRussian] ) +
+        Number.From ( [IsUzbekistan] ) +
+        Number.From ( [IsKazahstanCompany] ) +
+        Number.From ( [IsKazahstanPersonal] )),
+        
+    #"Added Conditional Column1" = Table.AddColumn(#"Added Custom2", "Country", each if [IsLithuanian] = true then "LT" else if [IsPolish] = true then "PL" else if [IsBelorusianCompany] = true then "BY company" else if [IsBelorussianPersonal] = true then "BY personal" else if [IsRussian] = true then "RUS" else if [IsUzbekistan] = true then "UZB" else if [IsKazahstanCompany] = true then "KZ company" else if [IsKazahstanPersonal] = true then "KZ personal" else "Other"),
+    #"Removed Other Columns1" = Table.SelectColumns(#"Added Conditional Column1",{"Numeris", "Statymas i eile" , "Country"})
+in
+    #"Removed Other Columns1"
